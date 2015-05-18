@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/bash -x
 set -e
 
 if [ -n "$MYSQL_PORT_3306_TCP" ]; then
@@ -141,5 +141,75 @@ if (!$mysql->query('CREATE DATABASE IF NOT EXISTS `' . $mysql->real_escape_strin
 
 $mysql->close();
 EOPHP
+
+SHIB=/etc/shibboleth
+export SHIB
+mkdir -p $SHIB
+export SHIB
+
+if [ "x${SP_HOSTNAME}" = "x" ]; then
+   SP_HOSTNAME="`hostname`"
+fi
+
+if [ "x${SP_CONTACT}" = "x" ]; then
+   SP_CONTACT="info@${SP_HOSTNAME}"
+fi
+
+if [ "x${SP_ABOUT}" = "x" ]; then
+   SP_ABOUT="/about"
+fi
+
+if [ ! -f "$SHIB/sp-key.pem" -o ! -f "$SHIB/sp-cert.pem" ]; then
+   shib-keygen -o /etc/shibboleth/credentials -u root -g root -h ${SP_HOSTNAME}
+fi
+
+cat>/etc/shibboleth/shibboleth2.xml<<EOXML
+<SPConfig xmlns="urn:mace:shibboleth:2.0:native:sp:config"                                                                                                                                        
+    xmlns:conf="urn:mace:shibboleth:2.0:native:sp:config"                                                                                                                                         
+    xmlns:saml="urn:oasis:names:tc:SAML:2.0:assertion"                                                                                                                                            
+    xmlns:samlp="urn:oasis:names:tc:SAML:2.0:protocol"                                                                                                                                            
+    xmlns:md="urn:oasis:names:tc:SAML:2.0:metadata"                                                                                                                                               
+    clockSkew="180">                                                                                                                                                                              
+                                                                                                                                                                                                  
+    <ApplicationDefaults entityID="https://${SP_HOSTNAME}/shibboleth"                                                                                                                             
+                         REMOTE_USER="eppn persistent-id targeted-id">                                                                                                                            
+
+        <Sessions lifetime="28800" timeout="3600" relayState="ss:mem"
+                  checkAddress="false" handlerSSL="true" cookieProps="https">
+            <Logout>SAML2 Local</Logout>
+            <Handler type="MetadataGenerator" Location="/Metadata" signing="false"/>
+            <Handler type="Status" Location="/Status" acl="127.0.0.1 ::1"/>
+            <Handler type="Session" Location="/Session" showAttributeValues="false"/>
+            <Handler type="DiscoveryFeed" Location="/DiscoFeed"/>
+
+            <md:AssertionConsumerService Location="/SAML2/POST"
+                                         index="1"
+                                         Binding="urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST"
+                                         conf:ignoreNoPassive="true" />
+
+            <SessionInitiator type="Chaining" Location="/DS/nordu.net" id="md.nordu.net" relayState="cookie">
+                <SessionInitiator type="SAML2" defaultACSIndex="1" acsByIndex="false" template="bindingTemplate.html"/>
+                <SessionInitiator type="Shib1" defaultACSIndex="5"/>
+                <SessionInitiator type="SAMLDS" URL="http://md.nordu.net/swamid.ds"/>
+            </SessionInitiator>
+        </Sessions>
+
+        <Errors supportContact="${SP_CONTACT}"
+            helpLocation="${SP_ABOUT}"
+            styleSheet="/shibboleth-sp/main.css"/>
+
+        <MetadataProvider type="XML" uri="http://md.swamid.se/md/swamid-idp.xml" backingFilePath="metadata.xml" reloadInterval="7200">
+        </MetadataProvider>
+        <AttributeExtractor type="XML" validate="true" reloadChanges="false" path="attribute-map.xml"/>
+        <AttributeResolver type="Query" subjectMatch="true"/>
+        <AttributeFilter type="XML" validate="true" path="attribute-policy.xml"/>
+        <CredentialResolver type="File" key="/etc/shibboleth/credentials/sp-key.pem" certificate="/etc/shibboleth/credentials/sp-cert.pem"/>
+    </ApplicationDefaults>
+    <SecurityPolicyProvider type="XML" validate="true" path="security-policy.xml"/>
+    <ProtocolProvider type="XML" validate="true" reloadChanges="false" path="protocols.xml"/>
+</SPConfig>
+EOXML
+
+service shibd start
 
 exec "$@"

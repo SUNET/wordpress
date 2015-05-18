@@ -1,12 +1,12 @@
 FROM php:5.6-apache
 
-RUN a2enmod rewrite
-
 # install the PHP extensions we need
 RUN apt-get update && apt-get install -y libpng12-dev libjpeg-dev && rm -rf /var/lib/apt/lists/* \
 	&& docker-php-ext-configure gd --with-png-dir=/usr --with-jpeg-dir=/usr \
 	&& docker-php-ext-install gd
 RUN docker-php-ext-install mysqli
+RUN apt-get update && apt-get install -y libapache2-mod-shib2
+RUN a2enmod shib2
 
 VOLUME /var/www/html
 
@@ -22,6 +22,8 @@ RUN curl -o wordpress.tar.gz -SL https://wordpress.org/wordpress-${WORDPRESS_UPS
 	&& chown -R www-data:www-data /usr/src/wordpress
 
 COPY docker-entrypoint.sh /entrypoint.sh
+COPY attribute-map.xml /etc/shibboleth/attribute-map.xml
+COPY shibd.logger /etc/shibboleth/shibd.logger
 
 # grr, ENTRYPOINT resets CMD now
 ENTRYPOINT ["/entrypoint.sh"]
