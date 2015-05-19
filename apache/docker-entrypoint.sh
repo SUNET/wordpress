@@ -159,7 +159,7 @@ if [ "x${SP_ABOUT}" = "x" ]; then
    SP_ABOUT="/about"
 fi
 
-if [ ! -f "$SHIB/sp-key.pem" -o ! -f "$SHIB/sp-cert.pem" ]; then
+if [ ! -f "$SHIB/credentials/sp-key.pem" -o ! -f "$SHIB/credentials/sp-cert.pem" ]; then
    shib-keygen -o /etc/shibboleth/credentials -u root -g root -h ${SP_HOSTNAME}
 fi
 
